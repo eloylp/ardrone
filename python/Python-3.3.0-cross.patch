@@ -1,0 +1,387 @@
+diff -Naur Python-3.3.0.orig/Include/pyport.h Python-3.3.0/Include/pyport.h
+--- Python-3.3.0.orig/Include/pyport.h	2012-09-29 04:00:26.000000000 -0400
++++ Python-3.3.0/Include/pyport.h	2012-10-12 18:51:33.549341304 -0400
+@@ -13,6 +13,10 @@
+ #include <stdint.h>
+ #endif
+ 
++#ifdef HAVE_UNISTD_H
++#include <unistd.h>
++#endif
++
+ /**************************************************************************
+ Symbols and macros to supply platform-independent interfaces to basic
+ C language & library operations whose spellings vary across platforms.
+diff -Naur Python-3.3.0.orig/Lib/plat-generic/regen Python-3.3.0/Lib/plat-generic/regen
+--- Python-3.3.0.orig/Lib/plat-generic/regen	2012-09-29 04:00:31.000000000 -0400
++++ Python-3.3.0/Lib/plat-generic/regen	2012-10-12 18:51:33.549341304 -0400
+@@ -1,3 +1,3 @@
+ #! /bin/sh
+ set -v
+-python$EXE ../../Tools/scripts/h2py.py -i '(u_long)' /usr/include/netinet/in.h
++hostpython ../../Tools/scripts/h2py.py -i '(u_long)' /usr/include/netinet/in.h
+diff -Naur Python-3.3.0.orig/Makefile.pre.in Python-3.3.0/Makefile.pre.in
+--- Python-3.3.0.orig/Makefile.pre.in	2012-09-29 04:00:41.000000000 -0400
++++ Python-3.3.0/Makefile.pre.in	2012-10-12 19:13:08.458091322 -0400
+@@ -451,7 +451,7 @@
+ 
+ run_profile_task:
+ 	: # FIXME: can't run for a cross build
+-	$(RUNSHARED) ./$(BUILDPYTHON) $(PROFILE_TASK)
++	$(RUNSHARED) ./$(HOSTPYTHON) $(PROFILE_TASK)
+ 
+ build_all_use_profile:
+ 	$(MAKE) all CFLAGS="$(CFLAGS) -fprofile-use -fprofile-correction"
+@@ -466,18 +466,18 @@
+ $(BUILDPYTHON):	Modules/python.o $(LIBRARY) $(LDLIBRARY) $(PY3LIBRARY)
+ 	$(LINKCC) $(PY_LDFLAGS) $(LINKFORSHARED) -o $@ Modules/python.o $(BLDLIBRARY) $(LIBS) $(MODLIBS) $(SYSLIBS) $(LDLAST)
+ 
+-platform: $(BUILDPYTHON) $(SYSCONFIGDATA)
+-	$(RUNSHARED) $(PYTHON_FOR_BUILD) -c 'import sys ; from sysconfig import get_platform ; print(get_platform()+"-"+sys.version[0:3])' >platform
++platform: $(HOSTPYTHON) $(SYSCONFIGDATA)
++	$(RUNSHARED) $(HOSTPYTHON) -c 'import sys ; from sysconfig import get_platform ; print(get_platform()+"-"+sys.version[0:3])' >platform
+ 
+ # Generate the sysconfig build-time data
+-$(SYSCONFIGDATA): $(BUILDPYTHON)
+-	$(RUNSHARED) $(PYTHON_FOR_BUILD) -S -m sysconfig --generate-posix-vars
++$(SYSCONFIGDATA): $(HOSTPYTHON)
++	$(RUNSHARED) $(HOSTPYTHON) -S -m sysconfig --generate-posix-vars
+ 
+ # Build the shared modules
+ sharedmods: $(BUILDPYTHON) $(SYSCONFIGDATA)
+ 	case $$MAKEFLAGS in *s*) quiet=-q; esac; \
+ 	$(RUNSHARED) CC='$(CC)' LDSHARED='$(BLDSHARED)' OPT='$(OPT)' \
+-		$(PYTHON_FOR_BUILD) $(srcdir)/setup.py $$quiet build
++		$(HOSTPYTHON) $(srcdir)/setup.py $$quiet build
+ 
+ # Build static library
+ # avoid long command lines, same as LIBRARY_OBJS
+@@ -640,7 +640,11 @@
+ $(GRAMMAR_H): $(GRAMMAR_INPUT) $(PGENSRCS)
+ 		@$(MKDIR_P) Include
+ 		$(MAKE) $(PGEN)
+-		$(PGEN) $(GRAMMAR_INPUT) $(GRAMMAR_H) $(GRAMMAR_C)
++		if [ -n "$(HOSTPGEN)" -a -e $(HOSTPGEN) ]; then \
++			$(HOSTPGEN) $(GRAMMAR_INPUT) $(GRAMMAR_H) $(GRAMMAR_C); \
++		else \
++			$(PGEN) $(GRAMMAR_INPUT) $(GRAMMAR_H) $(GRAMMAR_C); \
++		fi
+ $(GRAMMAR_C): $(GRAMMAR_H) $(GRAMMAR_INPUT) $(PGENSRCS)
+ 		$(MAKE) $(GRAMMAR_H)
+ 		touch $(GRAMMAR_C)
+@@ -820,7 +824,7 @@
+ ######################################################################
+ 
+ TESTOPTS=	$(EXTRATESTOPTS)
+-TESTPYTHON=	$(RUNSHARED) ./$(BUILDPYTHON) $(TESTPYTHONOPTS)
++TESTPYTHON=	$(RUNSHARED) ./$(HOSTPYTHON) $(TESTPYTHONOPTS)
+ TESTRUNNER=	$(TESTPYTHON) $(srcdir)/Tools/scripts/run_tests.py
+ TESTTIMEOUT=	3600
+ 
+@@ -852,7 +856,7 @@
+ 		fi
+ 		$(TESTRUNNER) -u all $(TESTOPTS)
+ 		$(RUNSHARED) /usr/libexec/oah/translate \
+-			./$(BUILDPYTHON) -E -m test -j 0 -u all $(TESTOPTS)
++			./$(HOSTPYTHON) -E -m test -j 0 -u all $(TESTOPTS)
+ 
+ # Like testall, but with only one pass and without multiple processes.
+ # Run an optional script to include information about the build environment.
+@@ -1076,28 +1080,6 @@
+ 		$(INSTALL_DATA) $(srcdir)/Modules/xxmodule.c \
+ 			$(DESTDIR)$(LIBDEST)/distutils/tests ; \
+ 	fi
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST)  $(RUNSHARED) \
+-		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+-		-d $(LIBDEST) -f \
+-		-x 'bad_coding|badsyntax|site-packages|lib2to3/tests/data' \
+-		$(DESTDIR)$(LIBDEST)
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+-		$(PYTHON_FOR_BUILD) -Wi -O $(DESTDIR)$(LIBDEST)/compileall.py \
+-		-d $(LIBDEST) -f \
+-		-x 'bad_coding|badsyntax|site-packages|lib2to3/tests/data' \
+-		$(DESTDIR)$(LIBDEST)
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST)  $(RUNSHARED) \
+-		$(PYTHON_FOR_BUILD) -Wi $(DESTDIR)$(LIBDEST)/compileall.py \
+-		-d $(LIBDEST)/site-packages -f \
+-		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+-		$(PYTHON_FOR_BUILD) -Wi -O $(DESTDIR)$(LIBDEST)/compileall.py \
+-		-d $(LIBDEST)/site-packages -f \
+-		-x badsyntax $(DESTDIR)$(LIBDEST)/site-packages
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+-		$(PYTHON_FOR_BUILD) -m lib2to3.pgen2.driver $(DESTDIR)$(LIBDEST)/lib2to3/Grammar.txt
+-	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
+-		$(PYTHON_FOR_BUILD) -m lib2to3.pgen2.driver $(DESTDIR)$(LIBDEST)/lib2to3/PatternGrammar.txt
+ 
+ # Create the PLATDIR source directory, if one wasn't distributed..
+ $(srcdir)/Lib/$(PLATDIR):
+@@ -1191,7 +1173,7 @@
+ # Install the dynamically loadable modules
+ # This goes into $(exec_prefix)
+ sharedinstall: sharedmods
+-	$(RUNSHARED) $(PYTHON_FOR_BUILD) $(srcdir)/setup.py install \
++	$(RUNSHARED) $(HOSTPYTHON) $(srcdir)/setup.py install \
+ 	   	--prefix=$(prefix) \
+ 		--install-scripts=$(BINDIR) \
+ 		--install-platlib=$(DESTSHARED) \
+@@ -1229,7 +1211,7 @@
+ 		fi; \
+ 	done
+ 	$(LN) -fsn include/python$(LDVERSION) $(DESTDIR)$(prefix)/Headers
+-	sed 's/%VERSION%/'"`$(RUNSHARED) ./$(BUILDPYTHON) -c 'import platform; print(platform.python_version())'`"'/g' < $(RESSRCDIR)/Info.plist > $(DESTDIR)$(prefix)/Resources/Info.plist
++	sed 's/%VERSION%/'"`$(RUNSHARED) ./$(HOSTPYTHON) -c 'import platform; print(platform.python_version())'`"'/g' < $(RESSRCDIR)/Info.plist > $(DESTDIR)$(prefix)/Resources/Info.plist
+ 	$(LN) -fsn $(VERSION) $(DESTDIR)$(PYTHONFRAMEWORKINSTALLDIR)/Versions/Current
+ 	$(LN) -fsn Versions/Current/$(PYTHONFRAMEWORK) $(DESTDIR)$(PYTHONFRAMEWORKINSTALLDIR)/$(PYTHONFRAMEWORK)
+ 	$(LN) -fsn Versions/Current/Headers $(DESTDIR)$(PYTHONFRAMEWORKINSTALLDIR)/Headers
+@@ -1266,7 +1248,7 @@
+ # This installs a few of the useful scripts in Tools/scripts
+ scriptsinstall:
+ 	SRCDIR=$(srcdir) $(RUNSHARED) \
+-	$(PYTHON_FOR_BUILD) $(srcdir)/Tools/scripts/setup.py install \
++	$(HOSTPYTHON) $(srcdir)/Tools/scripts/setup.py install \
+ 	--prefix=$(prefix) \
+ 	--install-scripts=$(BINDIR) \
+ 	--root=$(DESTDIR)/
+@@ -1288,7 +1270,7 @@
+ 
+ # Run reindent on the library
+ reindent:
+-	./$(BUILDPYTHON) $(srcdir)/Tools/scripts/reindent.py -r $(srcdir)/Lib
++	./$(HOSTPYTHON) $(srcdir)/Tools/scripts/reindent.py -r $(srcdir)/Lib
+ 
+ # Rerun configure with the same options as it was run last time,
+ # provided the config.status script exists
+@@ -1414,7 +1396,7 @@
+ 
+ # Perform some verification checks on any modified files.
+ patchcheck:
+-	$(RUNSHARED) ./$(BUILDPYTHON) $(srcdir)/Tools/scripts/patchcheck.py
++	$(RUNSHARED) ./$(HOSTPYTHON) $(srcdir)/Tools/scripts/patchcheck.py
+ 
+ # Dependencies
+ 
+diff -Naur Python-3.3.0.orig/Modules/Setup.dist Python-3.3.0/Modules/Setup.dist
+--- Python-3.3.0.orig/Modules/Setup.dist	2012-09-29 04:00:42.000000000 -0400
++++ Python-3.3.0/Modules/Setup.dist	2012-10-12 19:24:50.658091038 -0400
+@@ -162,18 +162,18 @@
+ 
+ # Modules that should always be present (non UNIX dependent):
+ 
+-#array arraymodule.c	# array objects
+-#cmath cmathmodule.c _math.c # -lm # complex math library functions
+-#math mathmodule.c _math.c # -lm # math library functions, e.g. sin()
+-#_struct _struct.c	# binary structure packing/unpacking
+-#time timemodule.c # -lm # time operations and variables
++array arraymodule.c	# array objects
++cmath cmathmodule.c _math.c # -lm # complex math library functions
++math mathmodule.c _math.c # -lm # math library functions, e.g. sin()
++_struct _struct.c	# binary structure packing/unpacking
++time timemodule.c -lrt # -lm # time operations and variables
+ #_weakref _weakref.c	# basic weak reference support
+ #_testcapi _testcapimodule.c    # Python C API test module
+-#_random _randommodule.c	# Random number generator
++_random _randommodule.c	# Random number generator
+ #atexit atexitmodule.c      # Register functions to be run at interpreter-shutdown
+ #_elementtree -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DUSE_PYEXPAT_CAPI _elementtree.c	# elementtree accelerator
+-#_pickle _pickle.c	# pickle accelerator
+-#_datetime _datetimemodule.c	# datetime accelerator
++_pickle _pickle.c	# pickle accelerator
++_datetime _datetimemodule.c	# datetime accelerator
+ #_bisect _bisectmodule.c	# Bisection algorithms
+ #_heapq _heapqmodule.c	# Heap queue algorithm
+ 
+@@ -184,19 +184,19 @@
+ # (If you have a really backward UNIX, select and socket may not be
+ # supported...)
+ 
+-#fcntl fcntlmodule.c	# fcntl(2) and ioctl(2)
+-#spwd spwdmodule.c		# spwd(3) 
+-#grp grpmodule.c		# grp(3)
++fcntl fcntlmodule.c	# fcntl(2) and ioctl(2)
++spwd spwdmodule.c		# spwd(3) 
++grp grpmodule.c		# grp(3)
+ #select selectmodule.c	# select(2); not on ancient System V
+ 
+ # Memory-mapped files (also works on Win32).
+-#mmap mmapmodule.c
++mmap mmapmodule.c
+ 
+ # CSV file helper
+-#_csv _csv.c
++_csv _csv.c
+ 
+ # Socket module helper for socket(2)
+-#_socket socketmodule.c
++_socket socketmodule.c
+ 
+ # Socket module helper for SSL support; you must comment out the other
+ # socket line above, and possibly edit the SSL variable:
+@@ -236,14 +236,14 @@
+ # The _md5 module implements the RSA Data Security, Inc. MD5
+ # Message-Digest Algorithm, described in RFC 1321.
+ 
+-#_md5 md5module.c
++_md5 md5module.c
+ 
+ 
+ # The _sha module implements the SHA checksum algorithms.
+ # (NIST's Secure Hash Algorithms.)
+-#_sha1 sha1module.c
+-#_sha256 sha256module.c
+-#_sha512 sha512module.c
++_sha1 sha1module.c
++_sha256 sha256module.c
++_sha512 sha512module.c
+ 
+ 
+ # The _tkinter module.
+@@ -290,7 +290,7 @@
+ #	-lX11
+ 
+ # Lance Ellinghaus's syslog module
+-#syslog syslogmodule.c		# syslog daemon interface
++syslog syslogmodule.c		# syslog daemon interface
+ 
+ 
+ # Curses support, requiring the System V version of curses, often
+@@ -328,7 +328,7 @@
+ 
+ 
+ # Helper module for various ascii-encoders
+-#binascii binascii.c
++binascii binascii.c
+ 
+ # Fred Drake's interface to the Python parser
+ #parser parsermodule.c
+@@ -367,7 +367,7 @@
+ #
+ # More information on Expat can be found at www.libexpat.org.
+ #
+-#pyexpat expat/xmlparse.c expat/xmlrole.c expat/xmltok.c pyexpat.c -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DUSE_PYEXPAT_CAPI
++pyexpat expat/xmlparse.c expat/xmlrole.c expat/xmltok.c pyexpat.c -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DUSE_PYEXPAT_CAPI
+ 
+ # Hye-Shik Chang's CJKCodecs
+ 
+diff -Naur Python-3.3.0.orig/setup.py Python-3.3.0/setup.py
+--- Python-3.3.0.orig/setup.py	2012-09-29 04:00:50.000000000 -0400
++++ Python-3.3.0/setup.py	2012-10-12 19:52:34.448091472 -0400
+@@ -31,7 +31,14 @@
+ COMPILED_WITH_PYDEBUG = ('--with-pydebug' in sysconfig.get_config_var("CONFIG_ARGS"))
+ 
+ # This global variable is used to hold the list of modules to be disabled.
+-disabled_module_list = []
++try:
++    disabled_module_list = os.environ["PYTHON_DISABLE_MODULES"].split()
++except KeyError:
++    disabled_module_list = []
++try:
++    disable_ssl = os.environ["PYTHON_DISABLE_SSL"]
++except KeyError:
++    disable_ssl = 0
+ 
+ # File which contains the directory for shared mods (for sys.path fixup
+ # when running from the build dir, see Modules/getpath.c)
+@@ -466,51 +473,6 @@
+             self.add_gcc_paths()
+         self.add_multiarch_paths()
+ 
+-        # Add paths specified in the environment variables LDFLAGS and
+-        # CPPFLAGS for header and library files.
+-        # We must get the values from the Makefile and not the environment
+-        # directly since an inconsistently reproducible issue comes up where
+-        # the environment variable is not set even though the value were passed
+-        # into configure and stored in the Makefile (issue found on OS X 10.3).
+-        for env_var, arg_name, dir_list in (
+-                ('LDFLAGS', '-R', self.compiler.runtime_library_dirs),
+-                ('LDFLAGS', '-L', self.compiler.library_dirs),
+-                ('CPPFLAGS', '-I', self.compiler.include_dirs)):
+-            env_val = sysconfig.get_config_var(env_var)
+-            if env_val:
+-                # To prevent optparse from raising an exception about any
+-                # options in env_val that it doesn't know about we strip out
+-                # all double dashes and any dashes followed by a character
+-                # that is not for the option we are dealing with.
+-                #
+-                # Please note that order of the regex is important!  We must
+-                # strip out double-dashes first so that we don't end up with
+-                # substituting "--Long" to "-Long" and thus lead to "ong" being
+-                # used for a library directory.
+-                env_val = re.sub(r'(^|\s+)-(-|(?!%s))' % arg_name[1],
+-                                 ' ', env_val)
+-                parser = optparse.OptionParser()
+-                # Make sure that allowing args interspersed with options is
+-                # allowed
+-                parser.allow_interspersed_args = True
+-                parser.error = lambda msg: None
+-                parser.add_option(arg_name, dest="dirs", action="append")
+-                options = parser.parse_args(env_val.split())[0]
+-                if options.dirs:
+-                    for directory in reversed(options.dirs):
+-                        add_dir_to_list(dir_list, directory)
+-
+-        if os.path.normpath(sys.base_prefix) != '/usr' \
+-                and not sysconfig.get_config_var('PYTHONFRAMEWORK'):
+-            # OSX note: Don't add LIBDIR and INCLUDEDIR to building a framework
+-            # (PYTHONFRAMEWORK is set) to avoid # linking problems when
+-            # building a framework with different architectures than
+-            # the one that is currently installed (issue #7473)
+-            add_dir_to_list(self.compiler.library_dirs,
+-                            sysconfig.get_config_var("LIBDIR"))
+-            add_dir_to_list(self.compiler.include_dirs,
+-                            sysconfig.get_config_var("INCLUDEDIR"))
+-
+         # lib_dirs and inc_dirs are used to search for files;
+         # if a file is found in one of those directories, it can
+         # be assumed that no additional -I,-L directives are needed.
+@@ -520,6 +482,9 @@
+                 '/lib', '/usr/lib',
+                 ]
+             inc_dirs = self.compiler.include_dirs + ['/usr/include']
++        else:
++            inc_dirs = self.compiler.include_dirs
++            lib_dirs = self.compiler.library_dirs
+         exts = []
+         missing = []
+ 
+@@ -728,12 +693,10 @@
+                 pass # Issue 7384: Already linked against curses or tinfo.
+             elif curses_library:
+                 readline_libs.append(curses_library)
+-            elif self.compiler.find_library_file(lib_dirs +
+-                                                     ['/usr/lib/termcap'],
+-                                                     'termcap'):
++            elif self.compiler.find_library_file(lib_dirs, 'termcap'):
+                 readline_libs.append('termcap')
+             exts.append( Extension('readline', ['readline.c'],
+-                                   library_dirs=['/usr/lib/termcap'],
++                                   library_dirs=[lib_dirs],
+                                    extra_link_args=readline_extra_link_args,
+                                    libraries=readline_libs) )
+         else:
+@@ -757,22 +720,17 @@
+         exts.append( Extension('_socket', ['socketmodule.c'],
+                                depends = ['socketmodule.h']) )
+         # Detect SSL support for the socket module (via _ssl)
+-        search_for_ssl_incs_in = [
+-                              '/usr/local/ssl/include',
+-                              '/usr/contrib/ssl/include/'
+-                             ]
++        search_for_ssl_incs_in = []
+         ssl_incs = find_file('openssl/ssl.h', inc_dirs,
+                              search_for_ssl_incs_in
+                              )
+         if ssl_incs is not None:
+             krb5_h = find_file('krb5.h', inc_dirs,
+-                               ['/usr/kerberos/include'])
++                               [])
+             if krb5_h:
+                 ssl_incs += krb5_h
+         ssl_libs = find_library_file(self.compiler, 'ssl',lib_dirs,
+-                                     ['/usr/local/ssl/lib',
+-                                      '/usr/contrib/ssl/lib/'
+-                                     ] )
++                                     [])
+ 
+         if (ssl_incs is not None and
+             ssl_libs is not None):
