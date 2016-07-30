@@ -5,13 +5,11 @@ cd /tmp/build
 
 rm -rf Python-3.3.0
 
-
 wget https://www.python.org/ftp/python/3.3.0/Python-3.3.0.tgz
 tar -xf Python-3.3.0.tgz
 rm -rf Python-3.3.0.tgz
 
 cd Python-3.3.0
-
 
 ./configure 
 
@@ -41,7 +39,7 @@ echo ac_cv_file__dev_ptmx=no > ./config.site
 echo ac_cv_file__dev_ptc=no >> ./config.site
 export CONFIG_SITE=config.site
 
-./configure --host=arm-linux-gnueabi --build=x86_64-linux --disable-ipv6 --prefix=/tmp/build/bin
+./configure --host=arm-linux-gnueabi --build=x86_64-linux --disable-ipv6
 
 make BLDSHARED="$TOOL_PREFIX-gcc -shared" CROSS_COMPILE=$TOOL_PREFIX- CROSS_COMPILE_TARGET=yes HOSTPYTHON=./python_for_build HOSTPGEN=./Parser/pgen_for_build
 chmod 777 python && mv python ../bin/
