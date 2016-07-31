@@ -15,7 +15,7 @@ cd Python-3.3.0
 
 echo "*static*" >> Modules/Setup.local
 
-make python Parser/pgen
+make -j6 python Parser/pgen
 mv python python_for_build
 mv Parser/pgen Parser/pgen_for_build
 make distclean
@@ -32,16 +32,18 @@ export LD=$TOOL_PREFIX-ld
 export READELF=$TOOL_PREFIX-readelf
 
 export CCFLAGS="-march=armv7-a -mtune=cortex-a8 -mfpu=vfp"
-export LDFLAGS="-static -static-libgcc" 
-export CPPFLAGS="-static"
+export LDFLAGS="-static -static-libgcc"
+export CPPFLAGS="-static  -fPIC"
 
 echo ac_cv_file__dev_ptmx=no > ./config.site
 echo ac_cv_file__dev_ptc=no >> ./config.site
 export CONFIG_SITE=config.site
 
-./configure --host=arm-linux-gnueabi --build=x86_64-linux --disable-ipv6
+cp Modules/Setup.dist Modules/Setup
 
-make BLDSHARED="$TOOL_PREFIX-gcc -shared" CROSS_COMPILE=$TOOL_PREFIX- CROSS_COMPILE_TARGET=yes HOSTPYTHON=./python_for_build HOSTPGEN=./Parser/pgen_for_build
+./configure --host=arm-linux-gnueabi --build=x86_64-linux --disable-ipv6 --disable-shared
+
+make -j6 BLDSHARED="$TOOL_PREFIX-gcc -shared" CROSS_COMPILE=$TOOL_PREFIX- CROSS_COMPILE_TARGET=yes HOSTPYTHON=./python_for_build HOSTPGEN=./Parser/pgen_for_build
 chmod 777 python && mv python ../bin/
 cd .. && rm -rf Python-3.3.0
 
